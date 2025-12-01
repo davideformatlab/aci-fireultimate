@@ -18,6 +18,8 @@
     :root {
       --primary-color: #007BFF;
       --accent-color: #00d2ff;
+      --dark-blue: #0a2351; /* Blu scuro Totali */
+      --light-blue: #60a5fa; /* Azzurro più chiaro per Variazioni (miglior contrasto col testo scuro) */
       --bg-dark: #0b0b0b;
       --text-light: #ffffff;
       --text-dark: #1a1a1a;
@@ -111,16 +113,26 @@
 
     /* --- CUSTOM SVG CHART STYLES --- */
     .svg-chart-container { position: relative; width: 100%; height: 100%; overflow: visible; }
-    .svg-chart { width: 100%; height: 100%; overflow: visible; }
+    .svg-chart { width: 100%; height: 100%; overflow: visible; display: block; }
     
+    /* Area Chart */
     .chart-point { pointer-events: none; transition: transform 0.2s ease; }
     .chart-hit-area { cursor: pointer; pointer-events: all; fill: transparent; stroke: none; }
-    
     .chart-line { fill: none; stroke-linecap: round; stroke-linejoin: round; }
     .chart-area { opacity: 0; }
-    .chart-axis-label { font-size: 14px; fill: #64748b; font-weight: 500; }
-    .chart-grid-line { stroke: #e2e8f0; stroke-width: 1; stroke-dasharray: 4 4; }
     
+    /* Waterfall Chart */
+    .bar-rect { transition: fill-opacity 0.3s ease; }
+    .bar-rect:hover { fill-opacity: 0.8; }
+    /* RIMOSSO fill: #ffffff da qui per gestirlo via JS */
+    .bar-label { font-size: 14px; font-weight: 700; text-anchor: middle; pointer-events: none; }
+
+    /* Axis & Grid */
+    .chart-axis-label { font-size: 14px; fill: #64748b; font-weight: 500; }
+    .chart-grid-line { stroke: #e2e8f0; stroke-width: 1; }
+    .chart-axis-line { stroke: #cbd5e1; stroke-width: 2; }
+    
+    /* Tooltip */
     .tooltip-box {
       position: fixed; background: rgba(0, 0, 0, 0.9); color: white; padding: 12px 16px; border-radius: 8px;
       pointer-events: none; opacity: 0; transition: opacity 0.15s ease; font-size: 14px; line-height: 1.6;
@@ -130,19 +142,23 @@
     .tooltip-label { font-weight: 700; font-size: 16px; margin-bottom: 4px; }
     .tooltip-value { font-weight: 400; color: #cbd5e1; }
 
-    /* --- BUTTONS (UPDATED FOR DYNAMIC COLORS) --- */
+    /* --- BUTTONS --- */
     .chart-controls { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; margin-bottom: 30px; }
     .chart-btn {
-      /* Colors handled by JS now */
       background: transparent; 
-      border: 2px solid #ddd; /* Fallback */
+      border: 2px solid #ddd; 
       padding: 12px 24px; border-radius: 30px; cursor: pointer;
       font-family: inherit; color: #666; transition: all 0.3s ease; font-weight: 600; font-size: 0.95rem;
     }
     .chart-btn:hover {
       transform: translateY(-2px); 
       box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-      filter: brightness(0.95); /* Works for both active and inactive */
+      filter: brightness(0.95);
+    }
+    .chart-btn.simple-active {
+        background-color: var(--primary-color) !important;
+        color: white !important;
+        border-color: var(--primary-color) !important;
     }
 
     footer { background: #000; padding: 60px 20px; text-align: center; color: #666; position: relative; z-index: 10; }
@@ -152,7 +168,7 @@
     @media (max-width: 768px) {
       .mascot-container { flex-direction: column; text-align: center; }
       .speech-bubble::before { display: none; }
-      .chart-container-large { height: 350px; }
+      .chart-container-large { height: 400px; }
       .hero-content h1 { font-size: clamp(2.5rem, 8vw, 4rem); }
       .parallax-wrapper { height: 70vh; }
       .chart-btn { padding: 10px 18px; font-size: 0.9rem; }
@@ -241,22 +257,19 @@
     <div class="hero-content"><h1>Dettaglio Voci</h1></div>
   </div>
 
-  <section class="content-section light text-dark">
+  <section class="content-section light text-dark" style="background-color: #eef2f6;">
     <div class="container">
-      <h1 style="font-size: 2.5rem; color: #333;">Confronta i Trend</h1>
-      <p style="text-align: center; margin-bottom: 30px;">
-        <strong>Seleziona più voci</strong> per confrontarle direttamente sul grafico. I pulsanti colorati indicano le linee attive.
+      <h1 style="font-size: 2.5rem; color: #333; text-align: left;">LE SPESE CHE SONO<br><span style="color: var(--primary-color); font-weight: 900;">CRESCIUTE DI PIÙ</span></h1>
+      <p style="text-align: left; margin-bottom: 30px;">
+        Analisi dell'evoluzione dei costi per periodi. Clicca sulle voci per visualizzare il dettaglio.
       </p>
       
-      <div class="chart-controls" id="chartControls"></div>
+      <div class="chart-controls" id="waterfallControls" style="justify-content: flex-start;"></div>
       
-      <div class="chart-container-large" style="border: 1px solid #eee; background: #fafafa;">
-        <div class="svg-chart-container" id="svgChartContainer"></div>
-        <div class="tooltip-box" id="chartTooltip">
-          <div class="tooltip-label" id="tooltipLabel"></div>
-          <div class="tooltip-value" id="tooltipValue"></div>
-        </div>
+      <div class="chart-container-large" style="border: none; background: transparent; box-shadow: none; height: 550px;">
+        <div class="svg-chart-container" id="waterfallChartContainer"></div>
       </div>
+      <p style="text-align: right; font-size: 0.8rem; color: #888; margin-top: 10px;">Variazioni in proporzione al livello del 2000. Dati in punti e non in percentuale.</p>
     </div>
   </section>
 
@@ -268,193 +281,147 @@
   <script>
     gsap.registerPlugin(ScrollTrigger, ScrollToPlugin);
 
-    // 1. PROGRESS BAR & PARALLAX
+    // 1. COMMON UI
     gsap.to("#progressBar", { width: "100%", ease: "none", scrollTrigger: { trigger: "body", start: "top top", end: "bottom bottom", scrub: 0 } });
     
     document.querySelectorAll('.parallax-bg').forEach(bg => {
-      gsap.to(bg, {
-        yPercent: 40, ease: "none",
-        scrollTrigger: { trigger: bg.parentElement, start: "top bottom", end: "bottom top", scrub: 1 }
-      });
+      gsap.to(bg, { yPercent: 40, ease: "none", scrollTrigger: { trigger: bg.parentElement, start: "top bottom", end: "bottom top", scrub: 1 } });
     });
 
-    // 2. FADE ANIMATIONS
     gsap.from('.stat-card', {
       y: 50, opacity: 0, duration: 0.8, stagger: 0.2, ease: "power2.out",
       scrollTrigger: { trigger: ".cards-grid", start: "top 85%" }
     });
 
-    // 3. SVG CHART LOGIC
-    const years = [2000, 2005, 2010, 2015, 2020, 2024];
-    const PADDING = { top: 40, right: 40, bottom: 60, left: 60 };
     const SVG_NS = 'http://www.w3.org/2000/svg';
 
+    // =========================================
+    // CLASS: SVGAreaChart (First Section)
+    // =========================================
     class SVGAreaChart {
       constructor(container, years) {
         this.container = container;
         this.years = years;
-        this.svg = null;
-        this.width = 0;
-        this.height = 0;
-        this.chartWidth = 0;
-        this.chartHeight = 0;
-        this.tooltip = null;
-        this.tooltipLabel = null;
-        this.tooltipValue = null;
+        this.padding = { top: 40, right: 40, bottom: 60, left: 60 };
+        this.svg = null; this.width = 0; this.height = 0; this.chartWidth = 0; this.chartHeight = 0;
+        this.tooltip = null; this.tooltipLabel = null; this.tooltipValue = null;
       }
-
+      // ... (metodi standard setTooltip, calculateDimensions, etc. identici a prima)
       setTooltip(tooltipEl, labelEl, valueEl) {
-        this.tooltip = tooltipEl;
-        this.tooltipLabel = labelEl;
-        this.tooltipValue = valueEl;
+        this.tooltip = tooltipEl; this.tooltipLabel = labelEl; this.tooltipValue = valueEl;
       }
-
       calculateDimensions() {
         const rect = this.container.getBoundingClientRect();
-        this.width = rect.width;
-        this.height = rect.height;
-        this.chartWidth = this.width - PADDING.left - PADDING.right;
-        this.chartHeight = this.height - PADDING.top - PADDING.bottom;
+        this.width = rect.width; this.height = rect.height;
+        this.chartWidth = this.width - this.padding.left - this.padding.right;
+        this.chartHeight = this.height - this.padding.top - this.padding.bottom;
       }
-
       getYScale(datasets) {
         if (!datasets || datasets.length === 0) return { min: 0, max: 100 };
         const allValues = datasets.flatMap(d => d.data);
         const minValue = Math.min(...allValues);
         const maxValue = Math.max(...allValues);
         const padding = (maxValue - minValue) * 0.1;
-        return {
-          min: Math.floor(minValue - padding),
-          max: Math.ceil(maxValue + padding)
-        };
+        return { min: Math.floor(minValue - padding), max: Math.ceil(maxValue + padding) };
       }
-
       calculatePoint(index, value, yScale) {
-        const x = PADDING.left + (index / (this.years.length - 1)) * this.chartWidth;
-        const y = PADDING.top + this.chartHeight - 
-                  ((value - yScale.min) / (yScale.max - yScale.min)) * this.chartHeight;
+        const x = this.padding.left + (index / (this.years.length - 1)) * this.chartWidth;
+        const y = this.padding.top + this.chartHeight - ((value - yScale.min) / (yScale.max - yScale.min)) * this.chartHeight;
         return { x, y };
       }
-
       createLinePath(points) {
         if (points.length === 0) return '';
         if (points.length === 1) return `M ${points[0].x} ${points[0].y}`;
-        
-        // Catmull-Rom interpolation
         let path = `M ${points[0].x} ${points[0].y}`;
         for (let i = 0; i < points.length - 1; i++) {
           const p0 = points[i === 0 ? i : i - 1];
           const p1 = points[i];
           const p2 = points[i + 1];
           const p3 = points[i + 2 === points.length ? i + 1 : i + 2];
-          
           const tension = 0.3;
           const cp1x = p1.x + (p2.x - p0.x) / 6 * tension;
           const cp1y = p1.y + (p2.y - p0.y) / 6 * tension;
           const cp2x = p2.x - (p3.x - p1.x) / 6 * tension;
           const cp2y = p2.y - (p3.y - p1.y) / 6 * tension;
-          
           path += ` C ${cp1x} ${cp1y}, ${cp2x} ${cp2y}, ${p2.x} ${p2.y}`;
         }
         return path;
       }
-
       createAreaPath(points) {
         if (points.length === 0) return '';
         const linePath = this.createLinePath(points);
-        const bottomRight = `L ${points[points.length - 1].x} ${PADDING.top + this.chartHeight}`;
-        const bottomLeft = `L ${points[0].x} ${PADDING.top + this.chartHeight}`;
+        const bottomRight = `L ${points[points.length - 1].x} ${this.padding.top + this.chartHeight}`;
+        const bottomLeft = `L ${points[0].x} ${this.padding.top + this.chartHeight}`;
         return `${linePath} ${bottomRight} ${bottomLeft} Z`;
       }
-
       createGradient(id, color) {
         const gradient = document.createElementNS(SVG_NS, 'linearGradient');
         gradient.setAttribute('id', id);
         gradient.setAttribute('x1', '0%'); gradient.setAttribute('y1', '0%');
         gradient.setAttribute('x2', '0%'); gradient.setAttribute('y2', '100%');
-
         const stop1 = document.createElementNS(SVG_NS, 'stop');
-        stop1.setAttribute('offset', '0%');
-        stop1.setAttribute('style', `stop-color:${color};stop-opacity:0.4`);
-
+        stop1.setAttribute('offset', '0%'); stop1.setAttribute('style', `stop-color:${color};stop-opacity:0.4`);
         const stop2 = document.createElementNS(SVG_NS, 'stop');
-        stop2.setAttribute('offset', '100%');
-        stop2.setAttribute('style', `stop-color:${color};stop-opacity:0`);
-
-        gradient.appendChild(stop1);
-        gradient.appendChild(stop2);
+        stop2.setAttribute('offset', '100%'); stop2.setAttribute('style', `stop-color:${color};stop-opacity:0`);
+        gradient.appendChild(stop1); gradient.appendChild(stop2);
         return gradient;
       }
-
       createAxisLabels(yScale) {
         const g = document.createElementNS(SVG_NS, 'g');
         const yTicks = 4;
         for (let i = 0; i <= yTicks; i++) {
           const value = yScale.min + (yScale.max - yScale.min) * (i / yTicks);
-          const y = PADDING.top + this.chartHeight - (i / yTicks) * this.chartHeight;
-          
+          const y = this.padding.top + this.chartHeight - (i / yTicks) * this.chartHeight;
           const line = document.createElementNS(SVG_NS, 'line');
-          line.setAttribute('x1', PADDING.left); line.setAttribute('y1', y);
-          line.setAttribute('x2', PADDING.left + this.chartWidth); line.setAttribute('y2', y);
+          line.setAttribute('x1', this.padding.left); line.setAttribute('y1', y);
+          line.setAttribute('x2', this.padding.left + this.chartWidth); line.setAttribute('y2', y);
           line.classList.add('chart-grid-line');
           g.appendChild(line);
-          
           const text = document.createElementNS(SVG_NS, 'text');
-          text.setAttribute('x', PADDING.left - 10); text.setAttribute('y', y + 5);
+          text.setAttribute('x', this.padding.left - 10); text.setAttribute('y', y + 5);
           text.setAttribute('text-anchor', 'end'); text.classList.add('chart-axis-label');
           text.textContent = Math.round(value);
           g.appendChild(text);
         }
         this.years.forEach((year, i) => {
-          const x = PADDING.left + (i / (this.years.length - 1)) * this.chartWidth;
+          const x = this.padding.left + (i / (this.years.length - 1)) * this.chartWidth;
           const text = document.createElementNS(SVG_NS, 'text');
-          text.setAttribute('x', x); text.setAttribute('y', PADDING.top + this.chartHeight + 30);
+          text.setAttribute('x', x); text.setAttribute('y', this.padding.top + this.chartHeight + 30);
           text.setAttribute('text-anchor', 'middle'); text.classList.add('chart-axis-label');
           text.textContent = year;
           g.appendChild(text);
         });
         return g;
       }
-
       render(datasets) {
         this.calculateDimensions();
         this.container.innerHTML = '';
-
         this.svg = document.createElementNS(SVG_NS, 'svg');
         this.svg.classList.add('svg-chart');
         this.svg.setAttribute('viewBox', `0 0 ${this.width} ${this.height}`);
         this.svg.setAttribute('preserveAspectRatio', 'xMidYMid meet');
-
         const defs = document.createElementNS(SVG_NS, 'defs');
         const yScale = this.getYScale(datasets);
-
         this.svg.appendChild(defs);
         this.svg.appendChild(this.createAxisLabels(yScale));
 
         const areasGroup = document.createElementNS(SVG_NS, 'g');
         const linesGroup = document.createElementNS(SVG_NS, 'g');
         const pointsGroup = document.createElementNS(SVG_NS, 'g');
-        
-        this.svg.appendChild(areasGroup);
-        this.svg.appendChild(linesGroup);
-        this.svg.appendChild(pointsGroup);
+        this.svg.appendChild(areasGroup); this.svg.appendChild(linesGroup); this.svg.appendChild(pointsGroup);
 
         datasets.forEach((dataset, datasetIndex) => {
           const { label, data, color, borderWidth = 3 } = dataset;
           const gradientId = `gradient-${label.replace(/\s+/g, '-')}-${Date.now()}-${datasetIndex}`;
-
           defs.appendChild(this.createGradient(gradientId, color));
-
           const points = data.map((value, i) => this.calculatePoint(i, value, yScale));
 
-          // 1. Area
           const areaPath = document.createElementNS(SVG_NS, 'path');
           areaPath.setAttribute('d', this.createAreaPath(points));
           areaPath.setAttribute('fill', `url(#${gradientId})`);
           areaPath.classList.add('chart-area');
           areasGroup.appendChild(areaPath);
 
-          // 2. Line
           const linePath = document.createElementNS(SVG_NS, 'path');
           linePath.setAttribute('d', this.createLinePath(points));
           linePath.classList.add('chart-line');
@@ -466,20 +433,16 @@
           linePath.style.strokeDasharray = pathLength;
           linePath.style.strokeDashoffset = pathLength;
 
-          // 3. Points
           points.forEach((point, i) => {
             const circle = document.createElementNS(SVG_NS, 'circle');
             circle.setAttribute('cx', point.x); circle.setAttribute('cy', point.y);
-            circle.setAttribute('r', '6');
-            circle.setAttribute('fill', color);
-            circle.setAttribute('stroke', '#fff');
-            circle.setAttribute('stroke-width', '2');
+            circle.setAttribute('r', '6'); circle.setAttribute('fill', color);
+            circle.setAttribute('stroke', '#fff'); circle.setAttribute('stroke-width', '2');
             circle.classList.add('chart-point');
             
             const hitArea = document.createElementNS(SVG_NS, 'circle');
             hitArea.setAttribute('cx', point.x); hitArea.setAttribute('cy', point.y);
-            hitArea.setAttribute('r', '20');
-            hitArea.classList.add('chart-hit-area');
+            hitArea.setAttribute('r', '20'); hitArea.classList.add('chart-hit-area');
 
             if (this.tooltip && this.tooltipLabel && this.tooltipValue) {
               let tooltipTimeout;
@@ -488,42 +451,28 @@
                 gsap.to(circle, { scale: 1.5, duration: 0.2 });
                 this.tooltipLabel.textContent = `${label} (${this.years[i]})`;
                 this.tooltipValue.textContent = `Indice: ${data[i]}`;
-                
                 const rect = this.container.getBoundingClientRect();
                 const circleScreenX = rect.left + point.x;
                 const circleScreenY = rect.top + point.y;
-                const tooltipWidth = 200; 
-                const tooltipHeight = 60;
-                
-                let left = circleScreenX + 15;
-                let top = circleScreenY;
-                
+                const tooltipWidth = 200; const tooltipHeight = 60;
+                let left = circleScreenX + 15; let top = circleScreenY;
                 if (left + tooltipWidth > window.innerWidth) left = circleScreenX - tooltipWidth - 15;
                 if (top + tooltipHeight > window.innerHeight) top = window.innerHeight - tooltipHeight - 10;
                 if (top < 10) top = 10;
-                
-                this.tooltip.style.left = `${left}px`;
-                this.tooltip.style.top = `${top}px`;
+                this.tooltip.style.left = `${left}px`; this.tooltip.style.top = `${top}px`;
                 this.tooltip.classList.add('visible');
               };
-              
               const hideTooltip = () => {
                 gsap.to(circle, { scale: 1, duration: 0.2 });
-                tooltipTimeout = setTimeout(() => {
-                  this.tooltip.classList.remove('visible');
-                }, 100);
+                tooltipTimeout = setTimeout(() => { this.tooltip.classList.remove('visible'); }, 100);
               };
-              
               hitArea.addEventListener('mouseenter', showTooltip);
               hitArea.addEventListener('mouseleave', hideTooltip);
               hitArea.addEventListener('touchstart', showTooltip, {passive: true});
             }
-
-            pointsGroup.appendChild(hitArea);
-            pointsGroup.appendChild(circle);
+            pointsGroup.appendChild(hitArea); pointsGroup.appendChild(circle);
           });
 
-          // GSAP Animations
           const delay = datasetIndex * 0.2;
           gsap.to(linePath, { strokeDashoffset: 0, duration: 1.5, ease: 'power2.inOut', delay: delay });
           gsap.to(areaPath, { opacity: 1, duration: 1, ease: 'power2.out', delay: delay + 0.5 });
@@ -533,12 +482,151 @@
           { opacity: 0, scale: 0, transformOrigin: 'center' },
           { opacity: 1, scale: 1, duration: 0.5, stagger: 0.01, delay: 1, ease: 'back.out(1.7)' }
         );
-
         this.container.appendChild(this.svg);
       }
     }
 
-    // --- DATA & HELPER FOR BUTTON STYLING ---
+    // =========================================
+    // CLASS: SVGWaterfallChart (Smart Colors)
+    // =========================================
+    class SVGWaterfallChart {
+      constructor(container) {
+        this.container = container;
+        this.padding = { top: 60, right: 40, bottom: 80, left: 60 }; 
+        this.svg = null; this.width = 0; this.height = 0; this.chartWidth = 0; this.chartHeight = 0;
+      }
+      calculateDimensions() {
+        const rect = this.container.getBoundingClientRect();
+        this.width = rect.width; this.height = rect.height;
+        this.chartWidth = this.width - this.padding.left - this.padding.right;
+        this.chartHeight = this.height - this.padding.top - this.padding.bottom;
+      }
+      getYScale(data) {
+        let runningTotal = 0;
+        let maxVal = 0; let minVal = 0;
+        data.forEach(item => {
+            if (item.isTotal) { runningTotal = item.value; } else { runningTotal += item.value; }
+            maxVal = Math.max(maxVal, runningTotal, item.value);
+            minVal = Math.min(minVal, runningTotal, item.value);
+        });
+        const padding = (maxVal - minVal) * 0.1;
+        return { min: Math.min(0, Math.floor(minVal - padding)), max: Math.ceil(maxVal + padding) };
+      }
+      mapY(value, yScale) {
+        return this.padding.top + this.chartHeight - ((value - yScale.min) / (yScale.max - yScale.min)) * this.chartHeight;
+      }
+      createAxis(data, yScale) {
+        const g = document.createElementNS(SVG_NS, 'g');
+        const yTicks = 5;
+        for (let i = 0; i <= yTicks; i++) {
+          const value = yScale.min + (yScale.max - yScale.min) * (i / yTicks);
+          const y = this.mapY(value, yScale);
+          const line = document.createElementNS(SVG_NS, 'line');
+          line.setAttribute('x1', this.padding.left); line.setAttribute('y1', y);
+          line.setAttribute('x2', this.padding.left + this.chartWidth); line.setAttribute('y2', y);
+          line.classList.add('chart-grid-line');
+          if (Math.abs(value) < 0.1) line.classList.add('chart-axis-line'); 
+          g.appendChild(line);
+        }
+        const barWidth = this.chartWidth / data.length;
+        data.forEach((item, i) => {
+            const xCenter = this.padding.left + i * barWidth + barWidth / 2;
+            const yBottom = this.padding.top + this.chartHeight;
+            const text = document.createElementNS(SVG_NS, 'text');
+            text.setAttribute('x', xCenter); text.setAttribute('y', yBottom + 25);
+            text.setAttribute('text-anchor', 'middle'); text.classList.add('chart-axis-label');
+            text.textContent = item.label;
+            g.appendChild(text);
+             const tick = document.createElementNS(SVG_NS, 'line');
+             tick.setAttribute('x1', xCenter); tick.setAttribute('y1', yBottom);
+             tick.setAttribute('x2', xCenter); tick.setAttribute('y2', yBottom + 5);
+             tick.classList.add('chart-axis-line');
+             g.appendChild(tick);
+        });
+        const bottomLine = document.createElementNS(SVG_NS, 'line');
+        bottomLine.setAttribute('x1', this.padding.left); bottomLine.setAttribute('y1', this.padding.top + this.chartHeight);
+        bottomLine.setAttribute('x2', this.padding.left + this.chartWidth); bottomLine.setAttribute('y2', this.padding.top + this.chartHeight);
+        bottomLine.classList.add('chart-axis-line');
+        g.appendChild(bottomLine);
+        return g;
+      }
+
+      createBars(data, yScale) {
+        const g = document.createElementNS(SVG_NS, 'g');
+        const barWidth = (this.chartWidth / data.length) * 0.6;
+        const slotWidth = this.chartWidth / data.length;
+        let runningTotal = 0;
+
+        data.forEach((item, i) => {
+            const x = this.padding.left + i * slotWidth + (slotWidth - barWidth) / 2;
+            let yStart, yEnd, barHeight, color;
+
+            if (item.isTotal) {
+                yStart = this.mapY(Math.max(0, item.value), yScale);
+                yEnd = this.mapY(Math.min(0, item.value), yScale);
+                runningTotal = item.value;
+                color = 'var(--dark-blue)'; // Totali Scuri
+            } else {
+                yStart = this.mapY(Math.max(runningTotal, runningTotal + item.value), yScale);
+                yEnd = this.mapY(Math.min(runningTotal, runningTotal + item.value), yScale);
+                runningTotal += item.value;
+                color = 'var(--light-blue)'; // Variazioni Chiare
+            }
+
+            barHeight = Math.abs(yEnd - yStart);
+            const rect = document.createElementNS(SVG_NS, 'rect');
+            rect.setAttribute('x', x); rect.setAttribute('y', yStart);
+            rect.setAttribute('width', barWidth); rect.setAttribute('height', Math.max(barHeight, 2)); 
+            rect.setAttribute('fill', color);
+            rect.classList.add('bar-rect');
+
+            // --- SMART TEXT COLOR LOGIC ---
+            // Totali = Sfondo Scuro = Testo Bianco
+            // Variazioni = Sfondo Chiaro = Testo Scuro (Nero)
+            // Questo garantisce leggibilità anche se la barra è piccola e il testo finisce fuori
+            const labelColor = item.isTotal ? '#ffffff' : '#0a2351'; 
+
+            const labelText = document.createElementNS(SVG_NS, 'text');
+            labelText.setAttribute('x', x + barWidth / 2);
+            // Positioning Logic
+            const finalLabelY = item.isTotal ? 
+                 (item.value > 0 ? yStart + barHeight/2 + 5 : yEnd + 20) : 
+                 (item.value >= 0 ? yStart - 10 : yEnd + 20); // Negative variations go below
+
+            labelText.setAttribute('y', finalLabelY); 
+            labelText.classList.add('bar-label');
+            labelText.setAttribute('fill', labelColor); // APPLICA IL COLORE QUI
+            labelText.textContent = item.value > 0 && !item.isTotal ? `+${item.value.toLocaleString('it-IT')}` : item.value.toLocaleString('it-IT');
+            
+            gsap.from(rect, { scaleY: 0, transformOrigin: item.value >= 0 ? "bottom" : "top", duration: 0.8, ease: "power2.out", delay: i * 0.15 });
+            gsap.from(labelText, { opacity: 0, y: "+=10", duration: 0.8, delay: i * 0.15 + 0.2 });
+
+            g.appendChild(rect);
+            g.appendChild(labelText);
+        });
+        return g;
+      }
+
+      render(data) {
+        this.calculateDimensions();
+        this.container.innerHTML = '';
+        this.svg = document.createElementNS(SVG_NS, 'svg');
+        this.svg.classList.add('svg-chart');
+        this.svg.setAttribute('viewBox', `0 0 ${this.width} ${this.height}`);
+        this.svg.setAttribute('preserveAspectRatio', 'xMidYMid meet');
+        const yScale = this.getYScale(data);
+        this.svg.appendChild(this.createAxis(data, yScale));
+        this.svg.appendChild(this.createBars(data, yScale));
+        this.container.appendChild(this.svg);
+      }
+    }
+
+
+    // =========================================
+    // 3. APP INITIALIZATION & DATA
+    // =========================================
+
+    const years = [2000, 2005, 2010, 2015, 2020, 2024];
     const mainChartAllData = {
       "Totale": { data: [100, 96.3, 97.2, 82.3, 70.5, 77.6], color: "#34495e", borderWidth: 4 },
       "Acquisto Auto": { data: [100, 86.6, 87.1, 82.3, 67.8, 77.6], color: "#2ecc71", borderWidth: 3 },
@@ -551,7 +639,27 @@
       "RCA": { data: [100, 95, 90, 85, 82, 80.3], color: "#1abc9c", borderWidth: 3 }
     };
 
-    // Helper to style buttons based on active state and dataset color
+    const waterfallData = {
+        "Pedaggi autostr.": [
+            { label: "2000", value: 100, isTotal: true },
+            { label: "2000-2019", value: 61.2, isTotal: false },
+            { label: "2019-2024", value: -11.9, isTotal: false },
+            { label: "2024", value: 149.3, isTotal: true }
+        ],
+        "Tassa automobil.": [
+            { label: "2000", value: 100, isTotal: true },
+            { label: "2000-2019", value: 20.3, isTotal: false },
+            { label: "2019-2024", value: -9.4, isTotal: false },
+            { label: "2024", value: 110.9, isTotal: true }
+        ],
+        "Parcheggio": [
+            { label: "2000", value: 100, isTotal: true },
+            { label: "2000-2019", value: 9.6, isTotal: false },
+            { label: "2019-2024", value: -1.3, isTotal: false },
+            { label: "2024", value: 108.3, isTotal: true }
+        ]
+    };
+
     function styleButton(btn, color, isActive) {
         if (isActive) {
             btn.style.backgroundColor = color;
@@ -564,7 +672,7 @@
         }
     }
 
-    // --- MAIN CHART INIT ---
+    // --- INIT MAIN CHART ---
     const mainActiveDatasets = new Set(["Totale", "Acquisto Auto", "Carburante", "Pedaggi"]);
     const mainChart = new SVGAreaChart(document.getElementById('mainSvgChartContainer'), years);
     mainChart.setTooltip(document.getElementById('mainChartTooltip'), document.getElementById('mainTooltipLabel'), document.getElementById('mainTooltipValue'));
@@ -580,21 +688,14 @@
       const btn = document.createElement('button');
       btn.className = 'chart-btn';
       btn.innerText = key;
-      
-      // Init Style
       const isActive = mainActiveDatasets.has(key);
       if (isActive) btn.classList.add('active');
       styleButton(btn, data.color, isActive);
-
       btn.onclick = () => {
         if (mainActiveDatasets.has(key)) { 
-            mainActiveDatasets.delete(key); 
-            btn.classList.remove('active');
-            styleButton(btn, data.color, false);
+            mainActiveDatasets.delete(key); btn.classList.remove('active'); styleButton(btn, data.color, false);
         } else { 
-            mainActiveDatasets.add(key); 
-            btn.classList.add('active');
-            styleButton(btn, data.color, true);
+            mainActiveDatasets.add(key); btn.classList.add('active'); styleButton(btn, data.color, true);
         }
         updateMainChart();
       };
@@ -602,47 +703,42 @@
     });
     updateMainChart();
 
-    // --- SECONDARY CHART INIT ---
-    const activeDatasets = new Set(['Pedaggi', 'Totale']);
-    const chart = new SVGAreaChart(document.getElementById('svgChartContainer'), years);
-    chart.setTooltip(document.getElementById('chartTooltip'), document.getElementById('tooltipLabel'), document.getElementById('tooltipValue'));
-    
-    function updateChart() {
-      const datasets = Array.from(activeDatasets).map(key => ({ label: key, ...mainChartAllData[key] }));
-      chart.render(datasets);
-    }
-    
-    const controls = document.getElementById('chartControls');
-    Object.keys(mainChartAllData).forEach(key => {
-      const data = mainChartAllData[key];
-      const btn = document.createElement('button');
-      btn.className = 'chart-btn';
-      btn.innerText = key;
-      
-      const isActive = activeDatasets.has(key);
-      if (isActive) btn.classList.add('active');
-      styleButton(btn, data.color, isActive);
+    // --- INIT WATERFALL CHART ---
+    let activeWaterfallKey = "Pedaggi autostr."; 
+    const waterfallChart = new SVGWaterfallChart(document.getElementById('waterfallChartContainer'));
+    const waterfallControls = document.getElementById('waterfallControls');
 
-      btn.onclick = () => {
-        if (activeDatasets.has(key)) { 
-            activeDatasets.delete(key); 
-            btn.classList.remove('active');
-            styleButton(btn, data.color, false);
-        } else { 
-            activeDatasets.add(key); 
-            btn.classList.add('active');
-            styleButton(btn, data.color, true);
-        }
-        updateChart();
-      };
-      controls.appendChild(btn);
+    function updateWaterfallChart() {
+        waterfallChart.render(waterfallData[activeWaterfallKey]);
+        Array.from(waterfallControls.children).forEach(btn => {
+            if (btn.innerText === activeWaterfallKey) {
+                btn.classList.add('simple-active');
+            } else {
+                btn.classList.remove('simple-active');
+            }
+        });
+    }
+
+    Object.keys(waterfallData).forEach(key => {
+        const btn = document.createElement('button');
+        btn.className = 'chart-btn';
+        btn.innerText = key;
+        btn.onclick = () => {
+            activeWaterfallKey = key;
+            updateWaterfallChart();
+        };
+        waterfallControls.appendChild(btn);
     });
-    updateChart();
+
+    setTimeout(updateWaterfallChart, 100); 
 
     let resizeTimeout;
     window.addEventListener('resize', () => {
       clearTimeout(resizeTimeout);
-      resizeTimeout = setTimeout(() => { updateMainChart(); updateChart(); }, 300);
+      resizeTimeout = setTimeout(() => { 
+          updateMainChart(); 
+          updateWaterfallChart();
+      }, 300);
     });
   </script>
 </body>
